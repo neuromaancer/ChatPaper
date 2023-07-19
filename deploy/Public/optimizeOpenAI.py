@@ -81,7 +81,7 @@ class chatPaper:
         """
         last_dialog = self.conversation[convo_id][-1]
         query = str(last_dialog['content'])
-        if(len(ENCODER.encode(str(query)))>self.max_tokens):
+        if len(ENCODER.encode(query)) > self.max_tokens:
             query = query[:int(1.5*self.max_tokens)]
         while(len(ENCODER.encode(str(query)))>self.max_tokens):
             query = query[:self.decrease_step]
@@ -146,8 +146,7 @@ class chatPaper:
             if not delta:
                 continue
             if "content" in delta:
-                content = delta["content"]
-                yield content
+                yield delta["content"]
     def ask(self, prompt: str, role: str = "user", convo_id: str = "default", **kwargs):
         """
         Non-streaming ask
@@ -181,10 +180,7 @@ class chatPaper:
             },
             stream=True,
         )
-        if response.status_code == 200:
-            return True
-        else:
-            return False
+        return response.status_code == 200
     def reset(self, convo_id: str = "default", system_prompt = None):
         """
         Reset the conversation
@@ -196,11 +192,8 @@ class chatPaper:
         input = ""
         role = ""
         for conv in self.conversation[convo_id]:
-            if (conv["role"]=='user'):
-                role = 'User'
-            else:
-                role = 'ChatGpt'
-            input+=role+' : '+conv['content']+'\n'
+            role = 'User' if (conv["role"]=='user') else 'ChatGpt'
+            input += f'{role} : ' + conv['content'] + '\n'
         prompt = "Your goal is to summarize the provided conversation in English. Your summary should be concise and focus on the key information to facilitate better dialogue for the large language model.Ensure that you include all necessary details and relevant information while still reducing the length of the conversation as much as possible. Your summary should be clear and easily understandable for the ChatGpt model providing a comprehensive and concise summary of the conversation."
         if(self.token_str(str(input)+prompt)>self.max_tokens):
             input = input[self.token_str(str(input))-self.max_tokens:]

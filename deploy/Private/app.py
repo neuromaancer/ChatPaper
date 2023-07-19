@@ -102,9 +102,7 @@ class Paper:
         # # 打开一个pdf文件
         doc = fitz.open(self.path) # pdf文档        
         text_list = [page.get_text() for page in doc]
-        all_text = ''
-        for text in text_list:
-            all_text += text
+        all_text = ''.join(text_list)
         # # 创建一个空列表，用于存储章节名称
         chapter_names = []
         for line in all_text.split('\n'):
@@ -116,7 +114,7 @@ class Paper:
                     if 1 < len(point_split_list) < 5 and (point_split_list[0] in self.roman_num or point_split_list[0] in self.digit_num):
                         print("line:", line)
                         chapter_names.append(line)        
-        
+
         return chapter_names
         
     def get_title(self):
@@ -134,7 +132,7 @@ class Paper:
                     if font_size > max_font_size: # 如果字体大小大于当前最大值
                         max_font_size = font_size # 更新最大值
                         max_string = block["lines"][0]["spans"][0]["text"] # 更新最大值对应的字符串
-        max_font_sizes.sort()                
+        max_font_sizes.sort()
         print("max_font_sizes", max_font_sizes[-10:])
         cur_title = ''
         for page in doc: # 遍历每一页
@@ -142,21 +140,13 @@ class Paper:
             blocks = text["blocks"] # 获取文本块列表
             for block in blocks: # 遍历每个文本块
                 if block["type"] == 0: # 如果是文字类型
-                    cur_string = block["lines"][0]["spans"][0]["text"] # 更新最大值对应的字符串
                     font_flags = block["lines"][0]["spans"][0]["flags"] # 获取第一行第一段文字的字体特征
                     font_size = block["lines"][0]["spans"][0]["size"] # 获取第一行第一段文字的字体大小                         
-                    # print(font_size)
-                    if abs(font_size - max_font_sizes[-1]) < 0.3 or abs(font_size - max_font_sizes[-2]) < 0.3:                        
-                        # print("The string is bold.", max_string, "font_size:", font_size, "font_flags:", font_flags)                            
-                        if len(cur_string) > 4 and "arXiv" not in cur_string:                            
-                            # print("The string is bold.", max_string, "font_size:", font_size, "font_flags:", font_flags) 
-                            if cur_title == ''    :
-                                cur_title += cur_string                       
-                            else:
-                                cur_title += ' ' + cur_string                       
-                            # break
-        title = cur_title.replace('\n', ' ')                        
-        return title
+                    if abs(font_size - max_font_sizes[-1]) < 0.3 or abs(font_size - max_font_sizes[-2]) < 0.3:
+                        cur_string = block["lines"][0]["spans"][0]["text"] # 更新最大值对应的字符串
+                        if len(cur_string) > 4 and "arXiv" not in cur_string:
+                            cur_title += cur_string if cur_title == '' else f' {cur_string}'
+        return cur_title.replace('\n', ' ')
 
     def _get_all_page_index(self):
         # 定义需要寻找的章节名称列表
@@ -172,15 +162,14 @@ class Paper:
                 # 将章节名称转换成大写形式
                 section_name_upper = section_name.upper()
                 # 如果当前页面包含"Abstract"这个关键词
-                if "Abstract" == section_name and section_name in cur_text:
+                if section_name == "Abstract" and section_name in cur_text:
                     # 将"Abstract"和它所在的页码加入字典中
                     section_page_dict[section_name] = page_index
-                # 如果当前页面包含章节名称，则将章节名称和它所在的页码加入字典中
-                else:
-                    if section_name + '\n' in cur_text:
-                        section_page_dict[section_name] = page_index
-                    elif section_name_upper + '\n' in cur_text:
-                        section_page_dict[section_name] = page_index
+                elif (
+                    section_name + '\n' in cur_text
+                    or section_name_upper + '\n' in cur_text
+                ):
+                    section_page_dict[section_name] = page_index
         # 返回所有找到的章节名称及它们在文档中出现的页码
         return section_page_dict
 
@@ -218,47 +207,49 @@ class Paper:
             print(sec_index, sec_name, self.section_page_dict[sec_name])
             if sec_index <= 0:
                 continue
-            else:
-                # 直接考虑后面的内容：
-                start_page = self.section_page_dict[sec_name]
+            # 直接考虑后面的内容：
+            start_page = self.section_page_dict[sec_name]
+            end_page = (
+                self.section_page_dict[
+                    list(self.section_page_dict.keys())[sec_index + 1]
+                ]
+                if sec_index < len(list(self.section_page_dict.keys())) - 1
+                else len(text_list)
+            )
+            print("start_page, end_page:", start_page, end_page)
+            cur_sec_text = ''
+            if end_page - start_page == 0:
                 if sec_index < len(list(self.section_page_dict.keys()))-1:
-                    end_page = self.section_page_dict[list(self.section_page_dict.keys())[sec_index+1]]
-                else:
-                    end_page = len(text_list)
-                print("start_page, end_page:", start_page, end_page)
-                cur_sec_text = ''
-                if end_page - start_page == 0:
-                    if sec_index < len(list(self.section_page_dict.keys()))-1:
-                        next_sec = list(self.section_page_dict.keys())[sec_index+1]
+                    next_sec = list(self.section_page_dict.keys())[sec_index+1]
+                    if text_list[start_page].find(sec_name) == -1:
+                        start_i = text_list[start_page].find(sec_name.upper())
+                    else:
+                        start_i = text_list[start_page].find(sec_name)
+                    if text_list[start_page].find(next_sec) == -1:
+                        end_i = text_list[start_page].find(next_sec.upper())
+                    else:
+                        end_i = text_list[start_page].find(next_sec)                        
+                    cur_sec_text += text_list[start_page][start_i:end_i]
+            else:
+                for page_i in range(start_page, end_page):                    
+#                         print("page_i:", page_i)
+                    if page_i == start_page:
                         if text_list[start_page].find(sec_name) == -1:
                             start_i = text_list[start_page].find(sec_name.upper())
                         else:
                             start_i = text_list[start_page].find(sec_name)
-                        if text_list[start_page].find(next_sec) == -1:
-                            end_i = text_list[start_page].find(next_sec.upper())
-                        else:
-                            end_i = text_list[start_page].find(next_sec)                        
-                        cur_sec_text += text_list[start_page][start_i:end_i]
-                else:
-                    for page_i in range(start_page, end_page):                    
-#                         print("page_i:", page_i)
-                        if page_i == start_page:
-                            if text_list[start_page].find(sec_name) == -1:
-                                start_i = text_list[start_page].find(sec_name.upper())
+                        cur_sec_text += text_list[page_i][start_i:]
+                    elif page_i < end_page:
+                        cur_sec_text += text_list[page_i]
+                    elif page_i == end_page:
+                        if sec_index < len(list(self.section_page_dict.keys()))-1:
+                            next_sec = list(self.section_page_dict.keys())[sec_index+1]
+                            if text_list[start_page].find(next_sec) == -1:
+                                end_i = text_list[start_page].find(next_sec.upper())
                             else:
-                                start_i = text_list[start_page].find(sec_name)
-                            cur_sec_text += text_list[page_i][start_i:]
-                        elif page_i < end_page:
-                            cur_sec_text += text_list[page_i]
-                        elif page_i == end_page:
-                            if sec_index < len(list(self.section_page_dict.keys()))-1:
-                                next_sec = list(self.section_page_dict.keys())[sec_index+1]
-                                if text_list[start_page].find(next_sec) == -1:
-                                    end_i = text_list[start_page].find(next_sec.upper())
-                                else:
-                                    end_i = text_list[start_page].find(next_sec)  
-                                cur_sec_text += text_list[page_i][:end_i]
-                section_dict[sec_name] = cur_sec_text.replace('-\n', '').replace('\n', ' ')
+                                end_i = text_list[start_page].find(next_sec)  
+                            cur_sec_text += text_list[page_i][:end_i]
+            section_dict[sec_name] = cur_sec_text.replace('-\n', '').replace('\n', ' ')
         return section_dict
 
 # 定义Reader类
@@ -287,36 +278,34 @@ class Reader:
         self.cur_api = 0
         self.file_format = 'md' # or 'txt'，如果为图片，则必须为'md'
         self.save_image = False
-        if self.save_image:
-            self.gitee_key = self.config.get('Gitee', 'api')
-        else:
-            self.gitee_key = ''
+        self.gitee_key = self.config.get('Gitee', 'api') if self.save_image else ''
                 
     def get_arxiv(self, max_results=30):
-        search = arxiv.Search(query=self.query,
-                              max_results=max_results,                              
-                              sort_by=self.sort,
-                              sort_order=arxiv.SortOrder.Descending,
-                              )       
-        return search
+        return arxiv.Search(
+            query=self.query,
+            max_results=max_results,
+            sort_by=self.sort,
+            sort_order=arxiv.SortOrder.Descending,
+        )
      
     def filter_arxiv(self, max_results=30):
         search = self.get_arxiv(max_results=max_results)
         print("all search:")
         for index, result in enumerate(search.results()):
             print(index, result.title, result.updated)
-            
-        filter_results = []   
+
+        filter_results = []
         filter_keys = self.filter_keys
-        
+
         print("filter_keys:", self.filter_keys)
         # 确保每个关键词都能在摘要中找到，才算是目标论文
-        for index, result in enumerate(search.results()):
+        for result in search.results():
             abs_text = result.summary.replace('-\n', '-').replace('\n', ' ')
-            meet_num = 0
-            for f_key in filter_keys.split(" "):
-                if f_key.lower() in abs_text.lower():
-                    meet_num += 1
+            meet_num = sum(
+                1
+                for f_key in filter_keys.split(" ")
+                if f_key.lower() in abs_text.lower()
+            )
             if meet_num == len(filter_keys.split(" ")):
                 filter_results.append(result)
                 # break
@@ -329,14 +318,21 @@ class Reader:
     def validateTitle(self, title):
         # 将论文的乱七八糟的路径格式修正
         rstr = r"[\/\\\:\*\?\"\<\>\|]" # '/ \ : * ? " < > |'
-        new_title = re.sub(rstr, "_", title) # 替换为下划线
-        return new_title
+        return re.sub(rstr, "_", title)
 
     def download_pdf(self, filter_results):
         # 先创建文件夹
-        date_str = str(datetime.datetime.now())[:13].replace(' ', '-')        
-        key_word = str(self.key_word.replace(':', ' '))        
-        path = self.root_path  + 'pdf_files/' + self.query.replace('au: ', '').replace('title: ', '').replace('ti: ', '').replace(':', ' ')[:25] + '-' + date_str
+        date_str = str(datetime.datetime.now())[:13].replace(' ', '-')
+        key_word = str(self.key_word.replace(':', ' '))
+        path = (
+            f'{self.root_path}pdf_files/'
+            + self.query.replace('au: ', '')
+            .replace('title: ', '')
+            .replace('ti: ', '')
+            .replace(':', ' ')[:25]
+            + '-'
+            + date_str
+        )
         try:
             os.makedirs(path)
         except:
@@ -344,10 +340,10 @@ class Reader:
         print("All_paper:", len(filter_results))
         # 开始下载：
         paper_list = []
-        for r_index, result in enumerate(filter_results):
+        for result in filter_results:
             try:
                 title_str = self.validateTitle(result.title)
-                pdf_name = title_str+'.pdf'
+                pdf_name = f'{title_str}.pdf'
                 # result.download_pdf(path, filename=pdf_name)
                 self.try_download_pdf(result, path, pdf_name)
                 paper_path = os.path.join(path, pdf_name)
@@ -363,7 +359,6 @@ class Reader:
                 paper_list.append(paper)
             except Exception as e:
                 print("download_error:", e)
-                pass
         return paper_list
     
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, min=4, max=10),
@@ -383,10 +378,10 @@ class Reader:
         with open(image_path, 'rb') as f:
             base64_data = base64.b64encode(f.read())
             base64_content = base64_data.decode()
-        
+
         date_str = str(datetime.datetime.now())[:19].replace(':', '-').replace(' ', '-') + '.' + ext
-        path = image_name+ '-' +date_str
-        
+        path = f'{image_name}-{date_str}'
+
         payload = {
             "access_token": self.gitee_key,
             "owner": self.config.get('Gitee', 'owner'),
@@ -396,77 +391,94 @@ class Reader:
             "message": "upload image"
         }
         # 这里需要修改成你的gitee的账户和仓库名，以及文件夹的名字：
-        url = f'https://gitee.com/api/v5/repos/'+self.config.get('Gitee', 'owner')+'/'+self.config.get('Gitee', 'repo')+'/contents/'+self.config.get('Gitee', 'path')+'/'+path
+        url = (
+            'https://gitee.com/api/v5/repos/'
+            + self.config.get('Gitee', 'owner')
+            + '/'
+            + self.config.get('Gitee', 'repo')
+            + '/contents/'
+            + self.config.get('Gitee', 'path')
+            + '/'
+            + path
+        )
         rep = requests.post(url, json=payload).json()
         print("rep:", rep)
-        if 'content' in rep.keys():
-            image_url = rep['content']['download_url']
-        else:
-            image_url = r"https://gitee.com/api/v5/repos/"+self.config.get('Gitee', 'owner')+'/'+self.config.get('Gitee', 'repo')+'/contents/'+self.config.get('Gitee', 'path')+'/' + path
-            
-        return image_url
+        return (
+            rep['content']['download_url']
+            if 'content' in rep.keys()
+            else r"https://gitee.com/api/v5/repos/"
+            + self.config.get('Gitee', 'owner')
+            + '/'
+            + self.config.get('Gitee', 'repo')
+            + '/contents/'
+            + self.config.get('Gitee', 'path')
+            + '/'
+            + path
+        )
     
     def summary_with_chat(self, paper_list):
         htmls = []
         for paper_index, paper in enumerate(paper_list):
             # 第一步先用title，abs，和introduction进行总结。
             text = ''
-            text += 'Title:' + paper.title
-            text += 'Url:' + paper.url
-            text += 'Abstrat:' + paper.abs
+            text += f'Title:{paper.title}'
+            text += f'Url:{paper.url}'
+            text += f'Abstrat:{paper.abs}'
             # intro
             text += list(paper.section_text_dict.values())[0]
             max_token = 2500 * 4
             text = text[:max_token]
-            chat_summary_text = self.chat_summary(text=text)           
+            chat_summary_text = self.chat_summary(text=text)
             htmls.append(chat_summary_text)
-            
+
             # TODO 往md文档中插入论文里的像素最大的一张图片，这个方案可以弄的更加智能一些：
             first_image, ext = paper.get_image_path()
-            if first_image is None or self.gitee_key == '':
-                pass
-            else:                
+            if first_image is not None and self.gitee_key != '':
                 image_title = self.validateTitle(paper.title)
                 image_url = self.upload_gitee(image_path=first_image, image_name=image_title, ext=ext)
-                htmls.append("\n")
-                htmls.append("![Fig]("+image_url+")")
-                htmls.append("\n")
-            # 第二步总结方法：
-            # TODO，由于有些文章的方法章节名是算法名，所以简单的通过关键词来筛选，很难获取，后面需要用其他的方案去优化。
-            method_key = ''
-            for parse_key in paper.section_text_dict.keys():
-                if 'method' in parse_key.lower() or 'approach' in parse_key.lower():
-                    method_key = parse_key
-                    break
-                
+                htmls.extend(("\n", f"![Fig]({image_url})", "\n"))
+            method_key = next(
+                (
+                    parse_key
+                    for parse_key in paper.section_text_dict.keys()
+                    if 'method' in parse_key.lower()
+                    or 'approach' in parse_key.lower()
+                ),
+                '',
+            )
             if method_key != '':
                 text = ''
                 method_text = ''
                 summary_text = ''
-                summary_text += "<summary>" + chat_summary_text
+                summary_text += f"<summary>{chat_summary_text}"
                 # methods                
-                method_text += paper.section_text_dict[method_key]   
+                method_text += paper.section_text_dict[method_key]
                 # TODO 把这个变成tenacity的自动判别！             
                 max_token = 2500 * 4
-                text = summary_text + "\n <Methods>:\n" + method_text 
+                text = summary_text + "\n <Methods>:\n" + method_text
                 text = text[:max_token]
                 chat_method_text = self.chat_method(text=text)
                 htmls.append(chat_method_text)
             else:
                 chat_method_text = ''
             htmls.append("\n")
-            
-            # 第三步总结全文，并打分：
-            conclusion_key = ''
-            for parse_key in paper.section_text_dict.keys():
-                if 'conclu' in parse_key.lower():
-                    conclusion_key = parse_key
-                    break
-            
+
+            conclusion_key = next(
+                (
+                    parse_key
+                    for parse_key in paper.section_text_dict.keys()
+                    if 'conclu' in parse_key.lower()
+                ),
+                '',
+            )
             text = ''
             conclusion_text = ''
             summary_text = ''
-            summary_text += "<summary>" + chat_summary_text + "\n <Method summary>:\n" + chat_method_text            
+            summary_text += (
+                f"<summary>{chat_summary_text}"
+                + "\n <Method summary>:\n"
+                + chat_method_text
+            )
             if conclusion_key != '':
                 # conclusion                
                 conclusion_text += paper.section_text_dict[conclusion_key]                
@@ -476,24 +488,10 @@ class Reader:
                 text = summary_text
             text = text[:max_token]
             chat_conclusion_text = self.chat_conclusion(text=text)
-            htmls.append(chat_conclusion_text)
-            htmls.append("\n")
+            htmls.extend((chat_conclusion_text, "\n"))
             md_text = "\n".join(htmls)
-            
+
             return markdown.markdown(md_text)
-            # # 整合成一个文件，打包保存下来。
-            '''
-            date_str = str(datetime.datetime.now())[:13].replace(' ', '-')
-            try:
-                export_path = os.path.join(self.root_path, 'export')
-                os.makedirs(export_path)
-            except:
-                pass                             
-            mode = 'w' if paper_index == 0 else 'a'
-            file_name = os.path.join(export_path, date_str+'-'+self.validateTitle(paper.title)[:25]+"."+self.file_format)
-            self.export_to_markdown("\n".join(htmls), file_name=file_name, mode=mode)
-            htmls = []
-            '''
             # file_name = os.path.join(export_path, date_str+'-'+self.validateTitle(paper.title)+".md")
             # self.export_to_markdown("\n".join(htmls), file_name=file_name, mode=mode)
             
@@ -502,8 +500,17 @@ class Reader:
                     stop=tenacity.stop_after_attempt(5),
                     reraise=True)
     def chat_conclusion(self, text):
-        self.chatPaper.reset(convo_id="chatConclusion",system_prompt="你是一个["+self.key_word+"]领域的审稿人，你需要严格评审这篇文章")
-        self.chatPaper.add_to_conversation(convo_id="chatConclusion", role="assistant", message=str("这是一篇英文文献的<summary>和<conclusion>部分内容，其中<summary>你已经总结好了，但是<conclusion>部分，我需要你帮忙归纳下面问题："+text))
+        self.chatPaper.reset(
+            convo_id="chatConclusion",
+            system_prompt=f"你是一个[{self.key_word}]领域的审稿人，你需要严格评审这篇文章",
+        )
+        self.chatPaper.add_to_conversation(
+            convo_id="chatConclusion",
+            role="assistant",
+            message=str(
+                f"这是一篇英文文献的<summary>和<conclusion>部分内容，其中<summary>你已经总结好了，但是<conclusion>部分，我需要你帮忙归纳下面问题：{text}"
+            ),
+        )
         content =  """                 
                  8. 做出如下总结：
                     - (1):这篇工作的意义如何？
@@ -528,8 +535,17 @@ class Reader:
                     stop=tenacity.stop_after_attempt(5),
                     reraise=True)
     def chat_method(self, text):
-        self.chatPaper.reset(convo_id="chatMethod",system_prompt="你是一个["+self.key_word+"]领域的科研人员，善于使用精炼的语句总结论文")
-        self.chatPaper.add_to_conversation(convo_id="chatMethod", role="assistant", message=str("这是一篇英文文献的<summary>和<Method>部分内容，其中<summary>你已经总结好了，但是<Methods>部分，我需要你帮忙阅读并归纳下面问题："+text))
+        self.chatPaper.reset(
+            convo_id="chatMethod",
+            system_prompt=f"你是一个[{self.key_word}]领域的科研人员，善于使用精炼的语句总结论文",
+        )
+        self.chatPaper.add_to_conversation(
+            convo_id="chatMethod",
+            role="assistant",
+            message=str(
+                f"这是一篇英文文献的<summary>和<Method>部分内容，其中<summary>你已经总结好了，但是<Methods>部分，我需要你帮忙阅读并归纳下面问题：{text}"
+            ),
+        )
         content =  """
         7. 详细描述这篇文章的方法思路。比如说它的步骤是：
             - (1):...
@@ -555,8 +571,17 @@ class Reader:
                     stop=tenacity.stop_after_attempt(5),
                     reraise=True)
     def chat_summary(self, text):
-        self.chatPaper.reset(convo_id="chatSummary",system_prompt="你是一个["+self.key_word+"]领域的科研人员，善于使用精炼的语句总结论文")
-        self.chatPaper.add_to_conversation(convo_id="chatSummary", role="assistant", message=str("这是一篇英文文献的标题，作者，链接，Abstract和Introduction部分内容，我需要你帮忙阅读并归纳下面问题："+text))
+        self.chatPaper.reset(
+            convo_id="chatSummary",
+            system_prompt=f"你是一个[{self.key_word}]领域的科研人员，善于使用精炼的语句总结论文",
+        )
+        self.chatPaper.add_to_conversation(
+            convo_id="chatSummary",
+            role="assistant",
+            message=str(
+                f"这是一篇英文文献的标题，作者，链接，Abstract和Introduction部分内容，我需要你帮忙阅读并归纳下面问题：{text}"
+            ),
+        )
         content = """                 
                  1. 标记出这篇文献的标题(加上中文翻译)
                  2. 列举所有的作者姓名 (使用英文)
@@ -608,16 +633,13 @@ def upload_pdf(text, file):
     # 检查两个输入都不为空
     if not text or not file:
         return "两个输入都不能为空，请输入字符并上传 PDF 文件！"
-    # 判断PDF文件
     if file and file.name.split(".")[-1].lower() != "pdf":
         return '请勿上传非 PDF 文件！'
-    else:
-        section_list = text.split(',')
-        paper_list = [Paper(path=file, sl=section_list)]
-        # 创建一个Reader对象
-        reader = Reader()
-        sum_info = reader.summary_with_chat(paper_list=paper_list)
-        return sum_info
+    section_list = text.split(',')
+    paper_list = [Paper(path=file, sl=section_list)]
+    # 创建一个Reader对象
+    reader = Reader()
+    return reader.summary_with_chat(paper_list=paper_list)
 
 # 标题
 title = "ChatPaper"
